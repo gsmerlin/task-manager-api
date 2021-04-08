@@ -1,10 +1,10 @@
-const sharp = require("sharp");
-const email = require("../emails/account");
-const multer = require("multer");
 const express = require("express");
+const multer = require("multer");
+const sharp = require("sharp");
 const User = require("../models/user");
-const router = new express.Router();
 const auth = require("../middleware/auth");
+const email = require("../emails/account");
+const router = new express.Router();
 
 router.post("/users", async (req, res) => {
   const user = new User(req.body);
@@ -74,6 +74,7 @@ router.patch("/users/me", auth, async (req, res) => {
 
   try {
     updates.forEach((update) => (req.user[update] = req.body[update]));
+    req.user.save();
     res.send(req.user);
   } catch (e) {
     res.status(400).send(e);
@@ -83,7 +84,7 @@ router.patch("/users/me", auth, async (req, res) => {
 router.delete("/users/me", auth, async (req, res) => {
   try {
     await req.user.remove();
-    email.sendCancelEmail(user.email, user.name);
+    email.sendCancelEmail(req.user.email, req.user.name);
     res.send(req.user);
   } catch (e) {
     res.status(500).send();
@@ -92,12 +93,13 @@ router.delete("/users/me", auth, async (req, res) => {
 
 const upload = multer({
   dest: "avatars",
+  storage: multer.memoryStorage(),
   limits: {
-    fileSize: 1000000,
+    fileSize: 10000000,
   },
   fileFilter(req, file, cb) {
-    if (!file.originalname.match(/\.(jpg | jpeg | png)$/)) {
-      cb(new Error("File must be a PDF"));
+    if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
+      cb(new Error("File must be a JPG, JPEG or PNG"));
     } else {
       cb(undefined, true);
     }
@@ -105,7 +107,7 @@ const upload = multer({
 });
 
 router.post(
-  "users/me/avatar",
+  "/users/me/avatar",
   auth,
   upload.single("avatar"),
   async (req, res) => {
@@ -114,9 +116,11 @@ router.post(
       .png()
       .toBuffer();
     req.user.avatar = buffer;
+    await req.user.save();
     res.send();
   },
   (error, req, res, next) => {
+    console.log(error);
     res.status(400).send({ error: error.message });
   }
 );
